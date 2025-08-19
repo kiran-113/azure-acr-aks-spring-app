@@ -1,0 +1,298 @@
+##########################################################
+          # NOTE: THIS IS FOR LOCAL DEPLOYMENT
+##########################################################
+# -----------------------------
+# Namespace
+# -----------------------------
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: spring-mysql
+
+---
+# -----------------------------
+# Secret (MySQL root password)
+# -----------------------------
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-secret
+  namespace: spring-mysql
+type: Opaque
+data:
+  # "root" base64-encoded -> cm9vdA==
+  MYSQL_ROOT_PASSWORD: cm9vdA==
+
+---
+# -----------------------------
+# ConfigMap (DB name + JDBC URL for app)
+# -----------------------------
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  namespace: spring-mysql
+data:
+  DB_NAME: test
+  # Service name for MySQL (below) is "mysql"
+  SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/test?createDatabaseIfNotExist=true&allowPublicKeyRetrieval=true&useSSL=false&serverTimezone=UTC
+  SPRING_DATASOURCE_USERNAME: root
+
+---
+# -----------------------------
+# PersistentVolume (hostPath demo)
+# NOTE: For production, use a proper StorageClass instead of hostPath.
+# -----------------------------
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: mysql-pv
+  namespace: spring-mysql
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: default
+  hostPath:
+    path: /mnt/data/mysql
+
+---
+# -----------------------------
+# PersistentVolumeClaim
+# -----------------------------
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+  namespace: spring-mysql
+spec:
+  storageClassName: default
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+
+---
+# -----------------------------
+# MySQL Service (ClusterIP)
+# -----------------------------
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  namespace: spring-mysql
+  labels:
+    app: mysql
+spec:
+  type: ClusterIP
+  selector:
+    app: mysql
+  ports:
+    - port: 3306
+      targetPort: 3306
+      protocol: TCP
+
+---
+# -----------------------------
+# MySQL StatefulSet
+# -----------------------------
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mysql
+  namespace: spring-mysql
+  labels:
+    app: mysql
+spec:
+  serviceName: mysql
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+        - name: mysqldb
+          image: mysql:8.0
+          ports:
+            - containerPort: 3306
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secret
+                  key: MYSQL_ROOT_PASSWORD
+            - name: MYSQL_DATABASE
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: DB_NAME
+          volumeMounts:
+            - name: mysql-data
+              mountPath: /var/lib/mysql
+      volumes:
+        - name: mysql-data
+          persistentVolumeClaim:
+            claimName: mysql-pvc
+
+---
+# -----------------------------
+# Application Service
+# - NodePort so you can reach it like hostIP:30090 (maps to container 8080)
+# - Service "port" is 9090 to mirror your compose mapping.
+# -----------------------------
+apiVersion: v1
+kind: Service
+metadata:
+  name: application-svc
+  namespace: spring-mysql
+  labels:
+    app: application
+spec:
+  type: NodePort
+  selector:
+    app: application
+  ports:
+    - name: http
+      port: 9090
+      targetPort: 8080
+      nodePort: 30090
+
+---
+# -----------------------------
+# Application Deployment
+# -----------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: application
+  namespace: spring-mysql
+  labels:
+    app: application
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: application
+  template:
+    metadata:
+      labels:
+        app: application
+    spec:
+      containers:
+        - name: spring-app
+          image: myacr.azurecr.io/spring-boot-mysql-app:latest
+          ports:
+            - containerPort: 8080
+          env:
+            - name: SPRING_DATASOURCE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: SPRING_DATASOURCE_URL
+            - name: SPRING_DATASOURCE_USERNAME
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: SPRING_DATASOURCE_USERNAME
+            - name: SPRING_DATASOURCE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secret
+                  key: MYSQL_ROOT_PASSWORD
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          readinessProbe:
+            httpGet:
+              path: /fetch
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /fetch
+              port: 8080
+            initialDelaySeconds: 20
+            periodSeconds: 20
+
+---
+# -----------------------------
+# Horizontal Pod Autoscaler (HPA) for the application
+# Requires metrics-server installed
+# -----------------------------
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: application-hpa
+  namespace: spring-mysql
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: application
+  minReplicas: 1
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+
+---
+# -----------------------------
+# NetworkPolicy
+# 1) Allow app -> mysql only on 3306
+# 2) Allow ingress to app on 8080 from anywhere (so NodePort works)
+# -----------------------------
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-app-to-mysql
+  namespace: spring-mysql
+spec:
+  podSelector:
+    matchLabels:
+      app: mysql
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: application
+      ports:
+        - protocol: TCP
+          port: 3306
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-external-to-application
+  namespace: spring-mysql
+spec:
+  podSelector:
+    matchLabels:
+      app: application
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - ipBlock:
+            cidr: 0.0.0.0/0   # allow from anywhere (adjust as needed)
+      ports:
+        - protocol: TCP
+          port: 8080

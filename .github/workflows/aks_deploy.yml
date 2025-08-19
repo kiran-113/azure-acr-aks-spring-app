@@ -1,0 +1,45 @@
+name: Deploy to AKS
+
+on:
+  workflow_dispatch:
+    inputs:
+      build:
+        description: "Build new image before deploy?"
+        required: true
+        default: "false"
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      # 🔹 Azure Login
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+
+      # 🔹 Get AKS credentials (to use kubectl)
+      - name: Set AKS Context
+        uses: azure/aks-set-context@v3
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+          cluster-name: ${{ secrets.AKS_CLUSTER_NAME }}
+          resource-group: ${{ secrets.AKS_RESOURCE_GROUP }}
+
+      # 🔹 Apply Kubernetes Manifests
+      - name: Apply Kubernetes Manifests
+        run: |
+          echo "Applying manifests in k8s_manifext/"
+          kubectl apply -f k8s_manifext/k8s_acr_deploy.yml -n spring-mysql
+
+      # 🔹 Deploy latest image from ACR
+      - name: Update Image and Rollout
+        run: |
+            echo "Checking pod status..."
+            sleep 30
+            kubectl get pods -n spring-mysql
