@@ -1,7 +1,9 @@
 name: Build and Push Docker image to Azure ACR
 
 on:
-  workflow_dispatch:
+  push:
+    branches:
+      - main   # or your branch
 
 env:
     WORK_DIR: ${{ github.workspace }}/spring-boot-mysql-docker-compose-main
@@ -28,7 +30,6 @@ jobs:
       # 🔹 Cache Maven packages (speeds up builds)
       - name: Cache Maven packages
         uses: actions/cache@v4
-        working-directory: ${{ env.WORK_DIR }}
         with:
           path: ~/.m2
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
