@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Book Manager</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+    }
+    h2 {
+      margin-top: 30px;
+    }
+    form input {
+      margin: 5px;
+      padding: 8px;
+    }
+    button {
+      padding: 8px 15px;
+      margin: 5px;
+      cursor: pointer;
+    }
+    table {
+      width: 80%;
+      border-collapse: collapse;
+      margin-top: 20px;
+    }
+    th, td {
+      border: 1px solid #ccc;
+      padding: 10px;
+      text-align: left;
+    }
+    th {
+      background-color: #f4f4f4;
+    }
+  </style>
+</head>
+<body>
+  <h1>📚 Book Manager</h1>
+
+  <!-- Add Book Form -->
+  <h2>Add a Book</h2>
+  <form id="bookForm">
+    <input type="number" id="bookId" name="bookId" placeholder="Book ID" required />
+    <input type="text" id="bookName" name="bookName" placeholder="Book Name" required />
+    <input type="text" id="author" name="author" placeholder="Author" required />
+    <button type="submit">Add Book</button>
+  </form>
+
+  <!-- Fetch Books Table -->
+  <h2>Books in Database</h2>
+  <button onclick="loadBooks()">🔄 Refresh</button>
+  <table id="booksTable">
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Book Name</th>
+        <th>Author</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+  <script>
+    // Handle Add Book form
+    document.getElementById("bookForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+
+      const formData = new FormData(e.target);
+      const book = Object.fromEntries(formData);
+
+      try {
+        const response = await fetch("/add", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(book),
+        });
+
+        const msg = await response.text();
+        alert(msg);
+
+        // Reload book list
+        loadBooks();
+        e.target.reset();
+      } catch (err) {
+        alert("Error: " + err.message);
+      }
+    });
+
+    // Load all books
+    async function loadBooks() {
+      try {
+        const response = await fetch("/fetch");
+        if (!response.ok) throw new Error("Failed to fetch books");
+
+        const books = await response.json();
+        const tableBody = document.querySelector("#booksTable tbody");
+        tableBody.innerHTML = "";
+
+        books.forEach((book) => {
+          const row = document.createElement("tr");
+          row.innerHTML = `
+            <td>${book.bookId}</td>
+            <td>${book.bookName}</td>
+            <td>${book.author}</td>
+          `;
+          tableBody.appendChild(row);
+        });
+      } catch (err) {
+        alert("Error: " + err.message);
+      }
+    }
+
+    // Load books immediately when page opens
+    loadBooks();
+  </script>
+</body>
+</html>
