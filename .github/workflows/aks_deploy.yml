@@ -1,20 +1,50 @@
-name: Deploy to AKS
+name: AKS-Build and Deploy
 
 on:
   workflow_dispatch:
     inputs:
-      build:
-        description: "Build new image before deploy?"
+      deploy:
+        description: "Deploy to AKS after build?"
         required: true
         default: "false"
+
+  push:
+    branches:
+      - main
+
+env:
+  WORK_DIR: ${{ github.workspace }}/spring-boot-mysql-docker-compose-main
+  IMAGE_NAME: ${{ secrets.ACR_NAME }}.azurecr.io/spring-boot-mysql-app
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
 
     steps:
+      # 🔹 Checkout
       - name: Checkout repo
         uses: actions/checkout@v4
+
+      # 🔹 Setup JDK 17 for Maven
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      # 🔹 Cache Maven
+      - name: Cache Maven packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+
+      # 🔹 Build JAR
+      - name: Build with Maven
+        working-directory: ${{ env.WORK_DIR }}
+        run: mvn clean package -DskipTests
 
       # 🔹 Azure Login
       - name: Azure Login
@@ -22,24 +52,42 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
+      # 🔹 ACR Login
+      - name: ACR Login
+        uses: azure/docker-login@v2
+        with:
+          login-server: ${{ secrets.ACR_NAME }}.azurecr.io
+          username: ${{ fromJSON(secrets.AZURE_CREDENTIALS).clientId }}
+          password: ${{ fromJSON(secrets.AZURE_CREDENTIALS).clientSecret }}
 
-      # 🔹 Get AKS credentials (to use kubectl)
+      # 🔹 Build & Push Docker Image
+      - name: Build and Push Docker image
+        working-directory: ${{ env.WORK_DIR }}
+        run: |
+          TAG=${{ github.sha }}
+          echo "IMAGE_TAG=$TAG" >> $GITHUB_ENV
+          docker build -t $IMAGE_NAME:$TAG .
+          docker push $IMAGE_NAME:$TAG
+          echo "✅ Image pushed: $IMAGE_NAME:$TAG"
+
+      # 🔹 Set AKS Context (only if deploy = true)
       - name: Set AKS Context
+        if: ${{ github.event.inputs.deploy == 'true' }}
         uses: azure/aks-set-context@v3
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
           cluster-name: ${{ secrets.AKS_CLUSTER_NAME }}
           resource-group: ${{ secrets.AKS_RESOURCE_GROUP }}
 
-      # 🔹 Apply Kubernetes Manifests
-      - name: Apply Kubernetes Manifests
+      # 🔹 Deploy to AKS with sed replacement
+      - name: Deploy to AKS
+        if: ${{ github.event.inputs.deploy == 'true' }}
         run: |
-          echo "Applying manifests in k8s_manifext/"
-          kubectl apply -f k8s_manifext/k8s_acr_deploy.yml -n spring-mysql
-
-      # 🔹 Deploy latest image from ACR
-      - name: Update Image and Rollout
-        run: |
-            echo "Checking pod status..."
-            sleep 30
-            kubectl get pods -n spring-mysql
+          echo "Deploying image $IMAGE_NAME:${{ env.IMAGE_TAG }} to AKS..."
+          sed -i "s|${{ secrets.ACR_NAME }}.azurecr.io/spring-boot-mysql-app:latest|$IMAGE_NAME:${{ env.IMAGE_TAG }}|g" k8s_manifest/k8s_aks_app_deploy.yml
+          kubectl apply -f k8s_manifest/k8s_aks_app_deploy.yml -n spring-mysql
+          kubectl apply -f k8s_manifest/k8s_aks_db_deploy.yml -n spring-mysql
+          echo "Waiting for deployments to be ready..."
+          sleep 30
+          echo "Current deployment status:"
+          kubectl get all -n spring-mysql

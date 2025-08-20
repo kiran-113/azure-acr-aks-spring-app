@@ -8,7 +8,7 @@ It uses Docker for containerization and Kubernetes resources for deployment, sto
 ```bash
 Clone Repo:[text](https://github.com/kiran-113/azure-acr-aks-spring-app.git)
 
-cd 
+cd
 
 ```
 ---
@@ -26,6 +26,8 @@ cd
 
 2. **Build the Docker image:**
 
+    Note: Replace `kiran11113` with your docker hub name
+
    ```bash
    docker build -t kiran11113/spring-boot-mysql-app .
    ```
@@ -38,13 +40,15 @@ cd
 
 4. **Push the image:**
 
+   Note: Replace `kiran11113` with your docker hub name
+
    ```bash
    docker push kiran11113/spring-boot-mysql-app
    ```
 
 ---
 
-## 📦 Kubernetes Resources
+## 📦 Kubernetes Deployment
 
 ### 1. **MySQL (Database Layer)**
 
@@ -71,7 +75,8 @@ cd
 ---
 ## Apply Resources
 ```bash
-kubectl apply -f . (Should in PWD where k8s yaml)
+cd k8s_manifest
+kubectl apply -f k8s.yaml (Should in PWD where k8s yaml)
 ```
 ---
 ## 🔍 Testing the Setup
@@ -79,7 +84,7 @@ kubectl apply -f . (Should in PWD where k8s yaml)
 ### 1. **Check Application is Running**
 
 ```bash
-Optional to set default namespace: kubectl config set-context --current --namespace=spring-mysql
+Optional: To set default namespace: kubectl config set-context --current --namespace=spring-mysql
 
 kubectl get pods -n spring-mysql
 
