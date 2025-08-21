@@ -64,7 +64,7 @@ jobs:
       - name: Build and Push Docker image
         working-directory: ${{ env.WORK_DIR }}
         run: |
-          TAG=${{ github.sha:7 }}
+          TAG=${{ github.sha }}
           echo "IMAGE_TAG=$TAG" >> $GITHUB_ENV
           docker build -t $IMAGE_NAME:$TAG .
           docker push $IMAGE_NAME:$TAG
