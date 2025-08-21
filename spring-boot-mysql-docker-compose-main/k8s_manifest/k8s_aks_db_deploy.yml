@@ -1,15 +1,6 @@
 ##########################################################
-          # NOTE: THIS IS FOR LOCAL DEPLOYMENT
+          # NOTE: THIS IS FOR AKS DEPLOYMENT
 ##########################################################
-# -----------------------------
-# Namespace
-# -----------------------------
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: spring-mysql
-
----
 # -----------------------------
 # Secret (MySQL root password)
 # -----------------------------

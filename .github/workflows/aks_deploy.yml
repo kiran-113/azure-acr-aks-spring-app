@@ -1,13 +1,6 @@
 name: AKS-Build and Deploy
 
 on:
-  # workflow_dispatch:
-  #   inputs:
-  #     deploy:
-  #       description: "Deploy to AKS after build?"
-  #       required: true
-  #       default: "false"
-
   push:
     branches:
       - main
@@ -71,26 +64,31 @@ jobs:
           docker push $IMAGE_NAME:$TAG
           echo "✅ Image pushed: $IMAGE_NAME:$TAG"
 
-      # 🔹 Set AKS Context (only if deploy = true)
-      # if: ${{ github.event.inputs.deploy == 'true' }}
-      - name: Set AKS Context
+      # 🔹 Set AKS Context
 
+      - name: Set AKS Context
         uses: azure/aks-set-context@v3
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
           cluster-name: ${{ secrets.AKS_CLUSTER_NAME }}
           resource-group: ${{ secrets.AKS_RESOURCE_GROUP }}
 
-      # 🔹 Deploy to AKS with sed replacement
-      # if: ${{ github.event.inputs.deploy == 'true' }}
+
       - name: Deploy to AKS
         working-directory: ${{ env.K8s_MANIFEST_DIR }}
-
         run: |
           echo "Deploying image $IMAGE_NAME:${{ env.IMAGE_TAG }} to AKS..."
+
+          # Make sure namespace exists (idempotent)
+          kubectl create namespace spring-mysql --dry-run=client -o yaml | kubectl apply -f -
+
+          # Replace image tag
           sed -i "s|${{ secrets.ACR_NAME }}.azurecr.io/spring-boot-mysql-app:latest|$IMAGE_NAME:${{ env.IMAGE_TAG }}|g" k8s_aks_app_deploy.yml
+
+          # Deploy manifests into namespace
           kubectl apply -f k8s_aks_app_deploy.yml -n spring-mysql
           kubectl apply -f k8s_aks_db_deploy.yml -n spring-mysql
+
           echo "Waiting for deployments to be ready..."
           sleep 30
           echo "Current deployment status:"
