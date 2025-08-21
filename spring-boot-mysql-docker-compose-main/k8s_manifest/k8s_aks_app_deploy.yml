@@ -75,7 +75,7 @@ metadata:
   labels:
     app: application
 spec:
-  type: NodePort
+  type: LoadBalancer
   selector:
     app: application
   ports:
