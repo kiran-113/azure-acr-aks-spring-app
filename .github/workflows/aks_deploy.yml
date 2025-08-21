@@ -15,6 +15,7 @@ on:
 env:
   WORK_DIR: ${{ github.workspace }}/spring-boot-mysql-docker-compose-main
   IMAGE_NAME: ${{ secrets.ACR_NAME }}.azurecr.io/spring-boot-mysql-app
+  K8s_MANIFEST_DIR: ${{ github.workspace }}/spring-boot-mysql-docker-compose-main/k8s_manifest
 
 jobs:
   build-and-deploy:
@@ -83,12 +84,13 @@ jobs:
       # 🔹 Deploy to AKS with sed replacement
       # if: ${{ github.event.inputs.deploy == 'true' }}
       - name: Deploy to AKS
+        working-directory: ${{ env.K8s_MANIFEST_DIR }}
 
         run: |
           echo "Deploying image $IMAGE_NAME:${{ env.IMAGE_TAG }} to AKS..."
-          sed -i "s|${{ secrets.ACR_NAME }}.azurecr.io/spring-boot-mysql-app:latest|$IMAGE_NAME:${{ env.IMAGE_TAG }}|g" k8s_manifest/k8s_aks_app_deploy.yml
-          kubectl apply -f k8s_manifest/k8s_aks_app_deploy.yml -n spring-mysql
-          kubectl apply -f k8s_manifest/k8s_aks_db_deploy.yml -n spring-mysql
+          sed -i "s|${{ secrets.ACR_NAME }}.azurecr.io/spring-boot-mysql-app:latest|$IMAGE_NAME:${{ env.IMAGE_TAG }}|g" k8s_aks_app_deploy.yml
+          kubectl apply -f k8s_aks_app_deploy.yml -n spring-mysql
+          kubectl apply -f k8s_aks_db_deploy.yml -n spring-mysql
           echo "Waiting for deployments to be ready..."
           sleep 30
           echo "Current deployment status:"
