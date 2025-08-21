@@ -1,12 +1,12 @@
 name: AKS-Build and Deploy
 
 on:
-  workflow_dispatch:
-    inputs:
-      deploy:
-        description: "Deploy to AKS after build?"
-        required: true
-        default: "false"
+  # workflow_dispatch:
+  #   inputs:
+  #     deploy:
+  #       description: "Deploy to AKS after build?"
+  #       required: true
+  #       default: "false"
 
   push:
     branches:
@@ -71,8 +71,9 @@ jobs:
           echo "✅ Image pushed: $IMAGE_NAME:$TAG"
 
       # 🔹 Set AKS Context (only if deploy = true)
+      # if: ${{ github.event.inputs.deploy == 'true' }}
       - name: Set AKS Context
-        if: ${{ github.event.inputs.deploy == 'true' }}
+
         uses: azure/aks-set-context@v3
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
@@ -80,8 +81,9 @@ jobs:
           resource-group: ${{ secrets.AKS_RESOURCE_GROUP }}
 
       # 🔹 Deploy to AKS with sed replacement
+      # if: ${{ github.event.inputs.deploy == 'true' }}
       - name: Deploy to AKS
-        if: ${{ github.event.inputs.deploy == 'true' }}
+
         run: |
           echo "Deploying image $IMAGE_NAME:${{ env.IMAGE_TAG }} to AKS..."
           sed -i "s|${{ secrets.ACR_NAME }}.azurecr.io/spring-boot-mysql-app:latest|$IMAGE_NAME:${{ env.IMAGE_TAG }}|g" k8s_manifest/k8s_aks_app_deploy.yml
