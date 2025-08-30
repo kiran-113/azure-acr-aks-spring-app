@@ -90,6 +90,8 @@ jobs:
       - name: Deploy to EKS
         working-directory: ${{ env.K8S_MANIFEST_DIR }}
         run: |
+             # Ensure namespace exists
+            kubectl create namespace spring-mysql --dry-run=client -o yaml | kubectl apply -f -
             kubectl apply -f deployment.yml
             kubectl apply -f service.yml
 
